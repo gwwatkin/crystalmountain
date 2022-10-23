@@ -27,8 +27,10 @@ import argparse
 import os
 import re
 import shutil
+import enum
 from glob import glob
 import subprocess
+from typing import List
 
 
 class Prettify:
@@ -76,11 +78,15 @@ k_test_statuses_shorthands = {
     'nospec' : Prettify.yellow('[N]')
 }
 
+class TestExitStatus(enum.Enum):
+    SUCCESS = 0
+    TEST_FAILURE = 1
+    ERROR = 2
 
-def handle_case(args, case):
+def handle_case(args, case) -> TestExitStatus:
     if not os.path.exists(case):
         print(Prettify.red('[CASE NOT FOUND]'), case)
-        return
+        return TestExitStatus.ERROR
 
     spec = re.sub(r".case.sh$",".spec", case)
     new_spec = re.sub(r".case.sh$",".spec.new", case)
@@ -93,15 +99,15 @@ def handle_case(args, case):
         return 'nospec'
 
     if args.failing and determine_status() != 'failing':
-        return
+        return TestExitStatus.SUCCESS
     if args.passing and determine_status() != 'passing':
-        return
+        return TestExitStatus.SUCCESS
     if args.nospec and determine_status() != 'nospec':
-        return
+        return TestExitStatus.SUCCESS
 
     if args.list:
         print(f"{k_test_statuses_shorthands[determine_status()]} {case}")
-        return
+        return TestExitStatus.SUCCESS
 
     if args.removeoutput:
         try:
@@ -133,7 +139,7 @@ def handle_case(args, case):
             print(Prettify.cyan('[RUN]'), case)
             print(run_with_console_update())
             print(Prettify.cyan('[END OF OUTPUT]'), '(no action performed)')
-            return
+            return TestExitStatus.SUCCESS
 
         if args.generate:
             if not os.path.exists(spec):
@@ -145,18 +151,20 @@ def handle_case(args, case):
             # regular test run
             if not os.path.exists(spec):
                 print(Prettify.yellow('[SPEC DOES NOT EXIST]'), spec)
-                return
+                return TestExitStatus.ERROR
 
             result = run_with_console_update()
             if read_file(spec) == result:
                 print(Prettify.green('[PASSED]'), case)
+                return TestExitStatus.SUCCESS
             else:
                 write_file(new_spec, result)
                 print(Prettify.red('[FAILED]'), case)
+                return TestExitStatus.TEST_FAILURE
 
 
 
-if __name__ == "__main__":
+def main() -> TestExitStatus:
 
     parser = argparse.ArgumentParser(description='Run a regression test suite for liblsqecc')
     parser.add_argument('cases',
@@ -204,5 +212,17 @@ if __name__ == "__main__":
     else:
         cases = glob('cases/**/*.case.sh', recursive=True)
 
+    returns : List[TestExitStatus]= []
     for case in cases:
-        handle_case(args, case)
+        returns.append(handle_case(args, case))
+
+    if all(map(lambda status: status==TestExitStatus.SUCCESS, returns)):
+        return TestExitStatus.SUCCESS
+    elif any(map(lambda status: status==TestExitStatus.ERROR, returns)):
+        return TestExitStatus.ERROR
+    else:
+        return TestExitStatus.TEST_FAILURE
+
+
+if __name__ == "__main__":
+    exit(main())
