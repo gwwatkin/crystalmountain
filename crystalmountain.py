@@ -70,7 +70,7 @@ def clear_console_line():
 
 
 def run_case_file(case):
-    return subprocess.check_output(f"source {case}", shell=True).decode('utf-8')
+    return subprocess.check_output(f"source {case}", shell=True, executable="/bin/bash").decode('utf-8')
 
 k_test_statuses_shorthands = {
     'passing' : Prettify.green('[P]'),
